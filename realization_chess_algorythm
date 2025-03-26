@@ -1,0 +1,394 @@
+class King:
+    def __init__(self, position, white=True):
+        self.definition = 6
+        if not white:
+            self.definition *= -1
+        self.moves = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
+        self.position = position
+
+    def possible_move(self, next_move):
+        x1, y1 = self.position
+        x2, y2 = next_move
+        return (x2 - x1, y2 - y1) in self.moves
+
+class Queen:
+    def __init__(self, position, white=True):
+        self.definition = 5
+        if not white:
+            self.definition *= -1
+        self.position = position
+
+class Pawn:
+    def __init__(self, position, white=True):
+        self.definition = 1
+        self.first_move = True
+        if not white:
+            self.definition *= -1
+        self.moves = (-1, 0)
+        self.eat = [(-1, -1), (-1, 1)]
+        if not white:
+            self.moves = (1, 0)
+            self.eat = [(1, -1), (1, 1)]
+        self.position = position
+
+    def possible_move(self, next_move):
+        x1, y1 = self.position
+        x2, y2 = next_move
+        if (x2 - x1, y2 - y1) == self.moves:
+            self.first_move = False
+            return True
+        if self.first_move and (x2 - x1, y2 - y1) == (self.moves[0] * 2, self.moves[1]):
+            self.first_move = False
+            return True
+        return False
+
+    def possible_eat(self, next_move):
+        x1, y1 = self.position
+        x2, y2 = next_move
+        if (x2 - x1, y2 - y1) in self.eat:
+            self.first_move = False
+            return True
+        return False
+
+class Rook:
+    def __init__(self, position, white=True):
+        self.definition = 2
+        if not white:
+            self.definition *= -1
+        self.position = position
+
+class Knight:
+    def __init__(self, position, white=True):
+        self.definition = 3
+        if not white:
+            self.definition *= -1
+        self.moves = [(-2, 1), (-1, 2), (1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1)]
+        self.position = position
+
+    def possible_move(self, next_move):
+        x1, y1 = self.position
+        x2, y2 = next_move
+        return (x2 - x1, y2 - y1) in self.moves
+
+class Bishop:
+    def __init__(self, position, white=True):
+        self.definition = 4
+        if not white:
+            self.definition *= -1
+        self.position = position
+
+
+class FreeCell:
+    def __init__(self):
+        self.definition = 0
+
+
+class Board:
+    def __init__(self):
+        self.board = [[FreeCell() for _ in range(8)] for _ in range(8)]
+        self.king_white = None
+        self.king_black = None
+        self.start_position()
+        self.player_turn = 1
+        self.checkmate = 0
+
+    def start_position(self):
+        # Setting white pawns
+        for i in range(8):
+            self.board[1][i] = Pawn((1, i), white=False)
+        # Setting black pawns
+        for i in range(8):
+            self.board[6][i] = Pawn((6, i), white=True)
+
+        # Setting rooks
+        self.board[0][0] = Rook((0, 0), white=False)
+        self.board[0][7] = Rook((0, 7), white=False)
+        self.board[7][0] = Rook((7, 0), white=True)
+        self.board[7][7] = Rook((7, 7), white=True)
+
+        # Setting knights
+        self.board[0][1] = Knight((0, 1), white=False)
+        self.board[0][6] = Knight((0, 6), white=False)
+        self.board[7][1] = Knight((7, 1), white=True)
+        self.board[7][6] = Knight((7, 6), white=True)
+
+        # Setting bishops
+        self.board[0][2] = Bishop((0, 2), white=False)
+        self.board[0][5] = Bishop((0, 5), white=False)
+        self.board[7][2] = Bishop((7, 2), white=True)
+        self.board[7][5] = Bishop((7, 5), white=True)
+
+        # Setting queens
+        self.board[0][3] = Queen((0, 3), white=False)
+        self.board[7][3] = Queen((7, 3), white=True)
+
+        # Setting kings
+        self.king_black = King((0, 4), white=False)
+        self.board[0][4] = self.king_black
+        self.king_white = King((7, 4), white=True)
+        self.board[7][4] = self.king_white
+
+    def is_under_check(self, king):
+        x_k, y_k = king.position
+        is_white = king.definition > 0
+
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]: # line check
+            x, y = x_k + dx, y_k + dy
+            while 0 <= x < 8 and 0 <= y < 8:
+                cell = self.board[x][y]
+                if not isinstance(cell, FreeCell):
+                    if (isinstance(cell, Rook) or isinstance(cell, Queen)) and cell.definition * king.definition < 0:
+                        return (x, y)
+                    break
+                x += dx
+                y += dy
+
+        for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1)]: #diagonal check
+            x, y = x_k + dx, y_k + dy
+            while 0 <= x < 8 and 0 <= y < 8:
+                cell = self.board[x][y]
+                if not isinstance(cell, FreeCell):
+                    if (isinstance(cell, Bishop) or isinstance(cell, Queen)) and cell.definition * king.definition < 0:
+                        return (x, y)
+                    break
+                x += dx
+                y += dy
+
+        knight_moves = [(-2, -1), (-1, -2), (1, -2), (2, -1),
+                        (2, 1), (1, 2), (-1, 2), (-2, 1)]
+        for dx, dy in knight_moves: # knight check
+            x, y = x_k + dx, y_k + dy
+            if 0 <= x < 8 and 0 <= y < 8:
+                cell = self.board[x][y]
+                if isinstance(cell, Knight) and cell.definition * king.definition < 0:
+                    return (x, y)
+
+        if is_white:
+            pawn_attacks = [(-1, -1), (-1, 1)]
+        else:
+            pawn_attacks = [(1, -1), (1, 1)]
+        for dx, dy in pawn_attacks: # pawn check
+            x, y = x_k + dx, y_k + dy
+            if 0 <= x < 8 and 0 <= y < 8:
+                cell = self.board[x][y]
+                if isinstance(cell, Pawn) and cell.definition * king.definition < 0:
+                    return (x, y)
+
+        return None
+
+    def check_rook_move(self, figure, next_move):
+        x1, y1 = figure.position
+        x2, y2 = next_move
+        if x1 == x2:
+            for cell in range(min(y1, y2) + 1, max(y1, y2)):
+                if not isinstance(self.board[x1][cell], FreeCell):
+                    return False
+        elif y1 == y2:
+            for cell in range(min(x1, x2) + 1, max(x1, x2)):
+                if not isinstance(self.board[cell][y1], FreeCell):
+                    return False
+        else:
+            return False
+        return True
+
+    def check_bishop_move(self, figure, next_move):
+        x1, y1 = figure.position
+        x2, y2 = next_move
+        if abs(x1 - x2) != abs(y1 - y2):
+            return False
+        dx = 1 if x2 > x1 else -1
+        dy = 1 if y2 > y1 else -1
+        x, y = x1 + dx, y1 + dy
+        while x != x2 and y != y2:
+            if not isinstance(self.board[x][y], FreeCell):
+                return False
+            x += dx
+            y += dy
+        return True
+
+    def check_queen_move(self, figure, next_move):
+        return self.check_rook_move(figure, next_move) or self.check_bishop_move(figure, next_move)
+
+    def check_knight_move(self, figure, next_move):
+        return figure.possible_move(next_move)
+
+    def check_pawn_move(self, figure, next_move, eat=False):
+        if eat:
+            return figure.possible_eat(next_move)
+        return figure.possible_move(next_move)
+
+    def check_king_move(self, figure, next_move):
+        if not figure.possible_move(next_move):
+            return False
+
+        x2, y2 = next_move
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = x2 + dx, y2 + dy
+                if 0 <= nx < 8 and 0 <= ny < 8:
+                    cell = self.board[nx][ny]
+                    if isinstance(cell, King) and cell.definition * figure.definition < 0:
+                        return False
+        return True
+
+    def is_valid_move(self, figure, next_move):
+        if isinstance(figure, Rook):
+            return self.check_rook_move(figure, next_move)
+        elif isinstance(figure, Bishop):
+            return self.check_bishop_move(figure, next_move)
+        elif isinstance(figure, Queen):
+            return self.check_queen_move(figure, next_move)
+        elif isinstance(figure, Knight):
+            return self.check_knight_move(figure, next_move)
+        elif isinstance(figure, Pawn):
+            return self.check_pawn_move(figure, next_move)
+        elif isinstance(figure, King):
+            return self.check_king_move(figure, next_move)
+        return False
+
+    def is_valid_eat(self, figure, next_move):
+        if isinstance(figure, Rook):
+            return self.check_rook_move(figure, next_move)
+        elif isinstance(figure, Bishop):
+            return self.check_bishop_move(figure, next_move)
+        elif isinstance(figure, Queen):
+            return self.check_queen_move(figure, next_move)
+        if isinstance(figure, Knight):
+            return self.check_knight_move(figure, next_move)
+        elif isinstance(figure, Pawn):
+            return self.check_pawn_move(figure, next_move, eat=True)
+        elif isinstance(figure, King):
+            return self.check_king_move(figure, next_move)
+        return False
+
+    def change_pawn_to_figure(self, figure):
+        if isinstance(figure, Pawn):
+            if figure.definition < 0 and figure.position[1] == 7:
+                return True
+            if figure.definition > 0 and figure.position[1] == 0:
+                return True
+        return False
+
+
+    def make_move(self, cur_pos, new_pos):
+        figure = self.board[cur_pos[0]][cur_pos[1]]
+        potential_pos = self.board[new_pos[0]][new_pos[1]]
+
+        if isinstance(figure, FreeCell):
+            print("No figure at this position")
+            return False
+
+        if self.player_turn * figure.definition < 0:
+            print('Not your turn')
+            return False
+
+        if isinstance(potential_pos, FreeCell):
+            if not self.is_valid_move(figure, new_pos):
+                print("Invalid move")
+                return False
+        else:
+            if potential_pos.definition * figure.definition > 0:
+                print("Cannot capture your own figure")
+                return False
+            if not self.is_valid_eat(figure, new_pos):
+                print("Invalid eat")
+                return False
+
+        king = self.king_white if self.player_turn == 1 else self.king_black
+        res_check = self.is_under_check(king)
+
+        if self.is_under_check(king) is not None:
+            if self.is_checkmate(king, res_check):
+                print('game over!')
+                self.checkmate = king.definition
+                return False
+
+        original_figure = figure
+        original_target = potential_pos
+        self.board[cur_pos[0]][cur_pos[1]] = FreeCell()
+        self.board[new_pos[0]][new_pos[1]] = figure
+        figure.position = new_pos
+
+        king = self.king_white if self.player_turn == 1 else self.king_black
+        res_check = self.is_under_check(king)
+        if self.is_under_check(king) is not None:
+            print(f"King is under check after this move from figure at the position {res_check}! Move is invalid")
+            self.board[cur_pos[0]][cur_pos[1]] = original_figure
+            self.board[new_pos[0]][new_pos[1]] = original_target
+            figure.position = cur_pos
+            return False
+
+        self.player_turn *= -1
+        print("Move successful")
+
+        return True
+
+    def king_has_legal_moves(self, king):
+        x, y = king.position
+        for dx, dy in king.moves:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < 8 and 0 <= ny < 8:
+                target_cell = self.board[nx][ny]
+                if isinstance(target_cell, FreeCell) or target_cell.definition * king.definition < 0:
+                    original_cell = self.board[nx][ny]
+                    self.board[x][y] = FreeCell()
+                    self.board[nx][ny] = king
+                    king.position = (nx, ny)
+
+                    if self.is_under_check(king) is None:
+                        self.board[x][y] = king
+                        self.board[nx][ny] = original_cell
+                        king.position = (x, y)
+                        print(f'есть еще ходы {nx, ny}')
+                        return True
+
+                    self.board[x][y] = king
+                    self.board[nx][ny] = original_cell
+                    king.position = (x, y)
+        print('королю ходить некуда')
+        return False
+
+    def can_block_check(self, king, attacker_pos):
+        x_k, y_k = king.position
+        x_a, y_a = attacker_pos
+
+        dx = 1 if x_a > x_k else -1 if x_a < x_k else 0
+        dy = 1 if y_a > y_k else -1 if y_a < y_k else 0
+
+        x, y = x_k + dx, y_k + dy
+        while (x, y) != (x_a, y_a):
+            for i in range(8):
+                for j in range(8):
+                    cell = self.board[i][j]
+                    if not isinstance(cell, FreeCell) and cell.definition * king.definition > 0:
+                        if self.is_valid_move(cell, (x, y)):
+                            print(f'фигура с {i, j} блокирует шах')
+                            return True
+            x += dx
+            y += dy
+        print('нельзя заблокировать')
+        return False
+
+    def can_capture_attacker(self, king, attacker_pos):
+        x_a, y_a = attacker_pos
+        for i in range(8):
+            for j in range(8):
+                cell = self.board[i][j]
+                if not isinstance(cell, FreeCell) and cell.definition * king.definition > 0 and not isinstance(cell, King):
+                    if self.is_valid_eat(cell, (x_a, y_a)):
+                        print(f'фигура с {i, j} может съесть фигуру с шаха')
+                        return True
+        print('нельзя съесть')
+        return False
+
+    def is_checkmate(self, king, attacker_pos):
+        if self.king_has_legal_moves(king):
+            return False
+        if self.can_block_check(king, attacker_pos):
+            return False
+        if self.can_capture_attacker(king, attacker_pos):
+            return False
+        return True
+

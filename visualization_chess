@@ -1,8 +1,8 @@
 import realization_chess
 import sys
 from PyQt6.QtWidgets import QApplication, QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsTextItem
-from PyQt6.QtGui import QBrush, QColor, QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QBrush, QColor, QFont, QPen
+from PyQt6.QtCore import Qt, QTimer
 
 
 class BasicWindow(QGraphicsView):
@@ -10,7 +10,7 @@ class BasicWindow(QGraphicsView):
         super().__init__()
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
-        self.resize(800, 800)
+        self.resize(800, 900)
 
         self.game_board = realization_chess.Board()
         self.game_board.start_position()
@@ -20,7 +20,19 @@ class BasicWindow(QGraphicsView):
 
         self.cell_from = None
         self.selection_rect = None
+        self.change_fig_rect_Q = None
+        self.change_fig_rect_B = None
+        self.change_fig_rect_K = None
+        self.change_fig_rect_R = None
         self.checkmate_rect = None
+        self.promotion_square = None
+        self.back_move = None
+        self.under_check_rect = None
+        self.check_timer = QTimer()
+        self.check_timer.setSingleShot(True)
+        self.check_timer.timeout.connect(self.remove_check_highlight)
+        self.promotion_items = []
+        self.possible_items = []
 
     def draw_board(self):
         for i in range(8):
@@ -32,20 +44,22 @@ class BasicWindow(QGraphicsView):
                     rect.setBrush(QBrush(QColor(230, 240, 230)))
                 self.scene.addItem(rect)
 
-    def update_board(self):
+        self.back_move = QGraphicsRectItem(800, 0, 100, 100)
+        self.back_move.setBrush(QBrush(QColor(255, 0, 0, 100)))
+        self.scene.addItem(self.back_move)
 
+    def update_board(self):
         for item in self.scene.items():
             if isinstance(item, QGraphicsTextItem):
                 self.scene.removeItem(item)
 
-
         figure_symbols = {
-            realization_chess.Pawn: "P",
-            realization_chess.Rook: "R",
-            realization_chess.Knight: "H",
-            realization_chess.Bishop: "B",
-            realization_chess.Queen: "Q",
-            realization_chess.King: "K",
+            realization_chess.Pawn: "♟",
+            realization_chess.Rook: "♜",
+            realization_chess.Knight: "♞",
+            realization_chess.Bishop: "♝",
+            realization_chess.Queen: "♛",
+            realization_chess.King: "♚",
             realization_chess.FreeCell: ""
         }
 
@@ -67,36 +81,187 @@ class BasicWindow(QGraphicsView):
 
 
 
+    def add_graphics_selection(self, x, y):
+        self.clear_promotion_items()
+        self.promotion_square = (x, y)
+        pen = QPen(Qt.GlobalColor.black)
+        pen.setWidth(1)
+
+        # Queen
+        self.change_fig_rect_Q = QGraphicsRectItem(x * 100, y * 100, 50, 50)
+        self.change_fig_rect_Q.setBrush(QBrush(QColor(255, 255, 255)))
+        self.change_fig_rect_Q.setPen(pen)
+
+        tQ = QGraphicsTextItem('♛')
+        tQ.setFont(QFont("Arial", 24))
+        tQ.setDefaultTextColor(QColor(0, 0, 0))
+        tQ.setPos(x * 100 + 15, y * 100 + 10)
+
+        # Bishop
+        self.change_fig_rect_B = QGraphicsRectItem(x * 100 + 50, y * 100, 50, 50)
+        self.change_fig_rect_B.setBrush(QBrush(QColor(255, 255, 255)))
+        self.change_fig_rect_B.setPen(pen)
+
+        tB = QGraphicsTextItem('♝')
+        tB.setFont(QFont("Arial", 24))
+        tB.setDefaultTextColor(QColor(0, 0, 0))
+        tB.setPos(x * 100 + 65, y * 100 + 10)
+
+        # Knight
+        self.change_fig_rect_K = QGraphicsRectItem(x * 100 + 50, y * 100 + 50, 50, 50)
+        self.change_fig_rect_K.setBrush(QBrush(QColor(255, 255, 255)))
+        self.change_fig_rect_K.setPen(pen)
+
+        tK = QGraphicsTextItem('♞')
+        tK.setFont(QFont("Arial", 24))
+        tK.setDefaultTextColor(QColor(0, 0, 0))
+        tK.setPos(x * 100 + 65, y * 100 + 60)
+
+        # Rook
+        self.change_fig_rect_R = QGraphicsRectItem(x * 100, y * 100 + 50, 50, 50)
+        self.change_fig_rect_R.setBrush(QBrush(QColor(255, 255, 255)))
+        self.change_fig_rect_R.setPen(pen)
+
+        tR = QGraphicsTextItem('♜')
+        tR.setFont(QFont("Arial", 24))
+        tR.setDefaultTextColor(QColor(0, 0, 0))
+        tR.setPos(x * 100 + 15, y * 100 + 60)
+
+        items = [self.change_fig_rect_Q, tQ,
+                 self.change_fig_rect_B, tB,
+                 self.change_fig_rect_K, tK,
+                 self.change_fig_rect_R, tR]
+
+        for item in items:
+            self.scene.addItem(item)
+            self.promotion_items.append(item)
+
+    def clear_promotion_items(self):
+        for item in self.promotion_items:
+            self.scene.removeItem(item)
+        self.promotion_items = []
+        self.promotion_square = None
+
+    def clear_possible_items(self):
+        for item in self.possible_items:
+            self.scene.removeItem(item)
+        self.possible_items = []
+
+    def handle_promotion_choice(self, x, y, choice):
+        if self.promotion_square:
+            px, py = self.promotion_square
+            if px == x and py == y:
+                pawn = self.game_board.change_fig
+                is_white = pawn.definition > 0
+
+                if choice == 'Q':
+                    new_piece = realization_chess.Queen((y, x), white=is_white)
+                elif choice == 'R':
+                    new_piece = realization_chess.Rook((y, x), white=is_white)
+                elif choice == 'H':
+                    new_piece = realization_chess.Knight((y, x), white=is_white)
+                elif choice == 'B':
+                    new_piece = realization_chess.Bishop((y, x), white=is_white)
+
+                self.game_board.board[y][x] = new_piece
+                self.game_board.change_fig = None
+
+                self.clear_promotion_items()
+                self.update_board()
+
+    def remove_check_highlight(self):
+        if self.under_check_rect:
+            self.scene.removeItem(self.under_check_rect)
+            self.under_check_rect = None
+
     def mousePressEvent(self, event):
+        self.clear_possible_items()
+
         if self.game_board.checkmate != 0:
-            self.checkmate_rect = self.checkmate_rect = QGraphicsRectItem(200, 300, 400, 200)
+            self.checkmate_rect = QGraphicsRectItem(200, 300, 400, 200)
             self.checkmate_rect.setBrush(QBrush(QColor(210, 140, 160)))
             self.scene.addItem(self.checkmate_rect)
-            t = ''
-            if self.game_board.checkmate < 0:
-                t = 'Game over! Black won'
-            else:
-                t = 'Game over! White won'
+            t = 'Game over! Black won' if self.game_board.checkmate < 0 else 'Game over! White won'
             text = QGraphicsTextItem(t)
             text.setFont(QFont("Arial", 30))
             text.setDefaultTextColor(QColor(0, 0, 0))
             text.setPos(250, 380)
             self.scene.addItem(text)
+            return
 
         x, y = event.pos().x() // 100, event.pos().y() // 100
+        rel_x, rel_y = event.pos().x() % 100, event.pos().y() % 100
+
+        if self.promotion_square:
+            px, py = self.promotion_square
+            if px == x and py == y:
+                if rel_x < 50 and rel_y < 50:
+                    self.handle_promotion_choice(x, y, 'Q')
+                elif rel_x >= 50 and rel_y < 50:
+                    self.handle_promotion_choice(x, y, 'B')
+                elif rel_x >= 50 and rel_y >= 50:
+                    self.handle_promotion_choice(x, y, 'H')
+                elif rel_x < 50 and rel_y >= 50:
+                    self.handle_promotion_choice(x, y, 'R')
+            return
+
+        if x == 8 and y == 0:
+            self.game_board.undo_move()
+            self.update_board()
+            return
 
         if self.cell_from is None:
+
+            self.game_board.possibly_under_check = None
+            if self.under_check_rect is not None:
+                self.scene.removeItem(self.under_check_rect)
+                self.under_check_rect = None
+
+            if isinstance(self.game_board.board[y][x], realization_chess.FreeCell):
+                return
+
             self.cell_from = (y, x)
             self.selection_rect = QGraphicsRectItem(x * 100, y * 100, 100, 100)
             self.selection_rect.setBrush(QBrush(QColor(200, 230, 255, 75)))
             self.scene.addItem(self.selection_rect)
-            print(f"Figure at the position: {self.cell_from} is moving!")
+
+            self.game_board.check_possible_move(y, x)
+
+            for cur_cell in self.game_board.currently_possible_moves:
+                if cur_cell[2] == 0:
+                    t = QGraphicsTextItem('.')
+                    t.setFont(QFont("Times New Roman", 60))
+                    t.setDefaultTextColor(QColor(0, 0, 0, 120))
+                    t.setPos(cur_cell[1] * 100 + 40, cur_cell[0] * 100)
+                    self.scene.addItem(t)
+                    self.possible_items.append(t)
+                else:
+                    r = QGraphicsRectItem(cur_cell[1] * 100, cur_cell[0] * 100, 100, 100)
+                    r.setBrush(QBrush(QColor(255, 255, 0, 50)))
+                    self.scene.addItem(r)
+                    self.possible_items.append(r)
+
+            self.game_board.currently_possible_moves = []
         else:
             cell_to = (y, x)
             if self.game_board.make_move(self.cell_from, cell_to):
                 self.update_board()
-            self.scene.removeItem(self.selection_rect)
+
+            if self.game_board.possibly_under_check is not None:
+                self.remove_check_highlight()
+                xu, yu = self.game_board.possibly_under_check[0], self.game_board.possibly_under_check[1]
+                self.under_check_rect = QGraphicsRectItem(yu * 100, xu * 100, 100, 100)
+                self.under_check_rect.setBrush(QBrush(QColor(255, 0, 0, 50)))
+                self.scene.addItem(self.under_check_rect)
+                self.check_timer.start(500)
+
+            if self.selection_rect:
+                self.scene.removeItem(self.selection_rect)
+                self.selection_rect = None
             self.cell_from = None
+
+            if self.game_board.change_pawn_to_figure(self.game_board.change_fig):
+                self.add_graphics_selection(x, y)
 
 
 app = QApplication(sys.argv)

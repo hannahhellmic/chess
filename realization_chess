@@ -70,6 +70,8 @@ class Knight:
         x2, y2 = next_move
         return (x2 - x1, y2 - y1) in self.moves
 
+
+
 class Bishop:
     def __init__(self, position, white=True):
         self.definition = 4
@@ -90,7 +92,11 @@ class Board:
         self.king_black = None
         self.start_position()
         self.player_turn = 1
+        self.change_fig = None
+        self.possibly_under_check = None
         self.checkmate = 0
+        self.currently_possible_moves = []
+        self.all_moves = []
 
     def start_position(self):
         # Setting white pawns
@@ -265,11 +271,113 @@ class Board:
 
     def change_pawn_to_figure(self, figure):
         if isinstance(figure, Pawn):
-            if figure.definition < 0 and figure.position[1] == 7:
+            if figure.definition < 0 and figure.position[0] == 7:
                 return True
-            if figure.definition > 0 and figure.position[1] == 0:
+            if figure.definition > 0 and figure.position[0] == 0:
                 return True
         return False
+
+    def undo_move(self):
+        if self.all_moves:
+            last_move = self.all_moves.pop()
+            self.player_turn = last_move['player_turn']
+            self.board[last_move['from_pos'][0]][last_move['from_pos'][1]] = last_move['figure']
+            self.board[last_move['new_pos'][0]][last_move['new_pos'][1]] = last_move['captured_cell']
+            self.board[last_move['from_pos'][0]][last_move['from_pos'][1]].position = last_move['from_pos']
+        return
+
+    def check_possible_move(self, pos_x, pos_y):
+        self.currently_possible_moves = []
+        figure = self.board[pos_x][pos_y]
+
+        if isinstance(figure, FreeCell):
+            return
+
+        if isinstance(figure, Pawn):
+            direction = -1 if figure.definition > 0 else 1
+            start_row = 6 if figure.definition > 0 else 1
+
+            if 0 <= pos_x + direction < 8:
+                if self.board[pos_x + direction][pos_y].definition == 0:
+                    self.currently_possible_moves.append((pos_x + direction, pos_y, 0))
+
+                    if pos_x == start_row and self.board[pos_x + 2 * direction][pos_y].definition == 0:
+                        self.currently_possible_moves.append((pos_x + 2 * direction, pos_y, 0))
+
+            for dy in [-1, 1]:
+                if 0 <= pos_y + dy < 8 and 0 <= pos_x + direction < 8:
+                    target = self.board[pos_x + direction][pos_y + dy]
+                    if target.definition * figure.definition < 0:
+                        self.currently_possible_moves.append((pos_x + direction, pos_y + dy, 1))
+
+        elif isinstance(figure, Knight):
+            directions = [(-2, 1), (-1, 2), (1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1)]
+            for dx, dy in directions:
+                x, y = pos_x + dx, pos_y + dy
+                if 0 <= x < 8 and 0 <= y < 8:
+                    if self.board[x][y].definition * figure.definition == 0:
+                        self.currently_possible_moves.append((x, y, 0))
+                    if self.board[x][y].definition * figure.definition < 0:
+                        self.currently_possible_moves.append((x, y, 1))
+
+        elif isinstance(figure, Bishop):
+            directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+            for dx, dy in directions:
+                x, y = pos_x, pos_y
+                while True:
+                    x += dx
+                    y += dy
+                    if not (0 <= x < 8 and 0 <= y < 8):
+                        break
+                    if self.board[x][y].definition == 0:
+                        self.currently_possible_moves.append((x, y, 0))
+                    else:
+                        if self.board[x][y].definition * figure.definition < 0:
+                            self.currently_possible_moves.append((x, y, 1))
+                        break
+
+        elif isinstance(figure, Rook):
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            for dx, dy in directions:
+                x, y = pos_x, pos_y
+                while True:
+                    x += dx
+                    y += dy
+                    if not (0 <= x < 8 and 0 <= y < 8):
+                        break
+                    if self.board[x][y].definition == 0:
+                        self.currently_possible_moves.append((x, y, 0))
+                    else:
+                        if self.board[x][y].definition * figure.definition < 0:
+                            self.currently_possible_moves.append((x, y, 1))
+                        break
+
+        elif isinstance(figure, Queen):
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1),
+                          (-1, -1), (-1, 1), (1, -1), (1, 1)]
+            for dx, dy in directions:
+                x, y = pos_x, pos_y
+                while True:
+                    x += dx
+                    y += dy
+                    if not (0 <= x < 8 and 0 <= y < 8):
+                        break
+                    if self.board[x][y].definition == 0:
+                        self.currently_possible_moves.append((x, y, 0))
+                    else:
+                        if self.board[x][y].definition * figure.definition < 0:
+                            self.currently_possible_moves.append((x, y, 1))
+                        break
+
+        elif isinstance(figure, King):
+            directions = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]
+            for dx, dy in directions:
+                x, y = pos_x + dx, pos_y + dy
+                if 0 <= x < 8 and 0 <= y < 8:
+                    if self.board[x][y].definition * figure.definition == 0:
+                        self.currently_possible_moves.append((x, y, 0))
+                    if self.board[x][y].definition * figure.definition < 0:
+                        self.currently_possible_moves.append((x, y, 1))
 
 
     def make_move(self, cur_pos, new_pos):
@@ -300,6 +408,7 @@ class Board:
         res_check = self.is_under_check(king)
 
         if self.is_under_check(king) is not None:
+            self.possibly_under_check = king.position
             if self.is_checkmate(king, res_check):
                 print('game over!')
                 self.checkmate = king.definition
@@ -307,18 +416,34 @@ class Board:
 
         original_figure = figure
         original_target = potential_pos
+        captured_cell = self.board[new_pos[0]][new_pos[1]]
         self.board[cur_pos[0]][cur_pos[1]] = FreeCell()
         self.board[new_pos[0]][new_pos[1]] = figure
         figure.position = new_pos
 
         king = self.king_white if self.player_turn == 1 else self.king_black
         res_check = self.is_under_check(king)
+
         if self.is_under_check(king) is not None:
+            self.possibly_under_check = king.position
             print(f"King is under check after this move from figure at the position {res_check}! Move is invalid")
             self.board[cur_pos[0]][cur_pos[1]] = original_figure
             self.board[new_pos[0]][new_pos[1]] = original_target
             figure.position = cur_pos
             return False
+
+        if isinstance(figure, Pawn):
+            self.change_fig = figure
+
+        last_move = {
+            'from_pos': cur_pos,
+            'new_pos': new_pos,
+            'figure': figure,
+            'captured_cell': captured_cell,
+            'player_turn': self.player_turn
+        }
+
+        self.all_moves.append(last_move)
 
         self.player_turn *= -1
         print("Move successful")

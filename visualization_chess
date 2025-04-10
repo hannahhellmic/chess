@@ -74,9 +74,9 @@ class BasicWindow(QGraphicsView):
 
                 if symbol != "":
                     text = QGraphicsTextItem(symbol)
-                    text.setFont(QFont("Times New Roman", 36))
+                    text.setFont(QFont("Times New Roman", 60))
                     text.setDefaultTextColor(figure_color)
-                    text.setPos(j * 100 + 35, i * 100 + 25)
+                    text.setPos(j * 100 + 27, i * 100 + 13)
                     self.scene.addItem(text)
 
 

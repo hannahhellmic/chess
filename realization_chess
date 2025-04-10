@@ -516,4 +516,3 @@ class Board:
         if self.can_capture_attacker(king, attacker_pos):
             return False
         return True
-
